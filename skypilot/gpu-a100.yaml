@@ -1,0 +1,67 @@
+# SkyPilot configuration for A100 GPU instance
+name: crown-gpu-a100
+
+resources:
+  cloud: aws
+  instance_type: p4d.24xlarge  # 8x A100 40GB
+  # For single A100: use p3.2xlarge or g5.12xlarge
+  # instance_type: g5.12xlarge  # 1x A100 40GB
+  
+  # Use spot instances for cost savings
+  use_spot: true
+  
+  # Disk size in GB
+  disk_size: 500
+  
+  # Open ports for services
+  ports:
+    - 8888  # Jupyter
+    - 8000  # API
+    - 6006  # TensorBoard
+
+# Auto-stop after 30 minutes of inactivity
+stop: -i 30
+
+# Setup commands - run once on first launch
+setup: |
+  # Clone the repository
+  git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git ~/crown
+  cd ~/crown
+  
+  # Install Python 3.11 if needed
+  sudo apt-get update
+  sudo apt-get install -y python3.11 python3.11-venv python3.11-dev
+  
+  # Install uv
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+  source ~/.bashrc
+  
+  # Create virtual environment and install dependencies
+  python3.11 -m venv venv
+  source venv/bin/activate
+  uv pip install -e ".[dev,rl]"
+  
+  # Setup Weights & Biases
+  wandb login --relogin $WANDB_API_KEY || true
+  
+  # Create model cache directory
+  mkdir -p ~/models
+
+# Run commands - executed every time
+run: |
+  cd ~/crown
+  source venv/bin/activate
+  
+  # Pull latest changes
+  git pull
+  
+  # Start Jupyter in background (optional)
+  # jupyter lab --ip=0.0.0.0 --port=8888 --no-browser &
+  
+  echo "GPU instance ready!"
+  echo "SSH into the instance with: sky ssh crown-gpu-a100"
+  echo "Or use VS Code Remote SSH"
+  
+  # Keep the instance running
+  sleep infinity

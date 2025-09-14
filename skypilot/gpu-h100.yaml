@@ -1,0 +1,99 @@
+# SkyPilot configuration for H100 GPU instance
+name: crown-gpu-h100
+
+resources:
+  cloud: aws
+  instance_type: p5.48xlarge  # 8x H100 80GB
+  # For smaller needs: p5.2xlarge (1x H100)
+  
+  # Use spot instances for massive cost savings
+  use_spot: true
+  
+  # Disk size in GB
+  disk_size: 1000
+  
+  # Open ports
+  ports:
+    - 8888  # Jupyter
+    - 8000  # API
+    - 6006  # TensorBoard
+
+# Auto-stop after 30 minutes of inactivity (critical for H100 costs!)
+stop: -i 30
+
+# File mounts from local to remote
+file_mounts:
+  # Mount local config
+  ~/crown/.env: .env
+  
+  # Optional: Mount data directory
+  # ~/crown/data: ./data
+
+# Environment variables
+envs:
+  CUDA_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
+  WANDB_PROJECT: crown-experiments
+
+# Setup commands
+setup: |
+  """
+  Initial setup for H100 instance.
+  This runs only once when the instance is first created.
+  """
+  # Update system
+  sudo apt-get update
+  
+  # Clone repository
+  git clone https://github.com/YOUR_USERNAME/YOUR_REPO.git ~/crown
+  cd ~/crown
+  
+  # Install Python 3.11
+  sudo apt-get install -y python3.11 python3.11-venv python3.11-dev
+  
+  # Install uv
+  curl -LsSf https://astral.sh/uv/install.sh | sh
+  echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
+  
+  # Create venv and install deps
+  python3.11 -m venv venv
+  source venv/bin/activate
+  $HOME/.cargo/bin/uv pip install -e ".[dev,rl]"
+  
+  # Install monitoring tools
+  pip install nvitop
+  
+  # Setup model cache
+  mkdir -p ~/models
+  
+  # Configure git
+  git config --global user.email "your-email@example.com"
+  git config --global user.name "Your Name"
+
+# Run commands
+run: |
+  """
+  Commands that run every time the instance starts.
+  """
+  cd ~/crown
+  source venv/bin/activate
+  
+  # Update code
+  git pull origin main || true
+  
+  # Ensure latest dependencies
+  uv pip install -e ".[dev,rl]"
+  
+  # Show GPU info
+  nvidia-smi
+  
+  # Optional: Start training immediately
+  # python src/scripts/train_example.py
+  
+  echo "="
+  echo "H100 instance ready!"
+  echo "SSH: sky ssh crown-gpu-h100"
+  echo "Costs: ~$32/hour - remember to stop when done!"
+  echo "="
+  
+  # Keep alive
+  sleep infinity

@@ -1,0 +1,219 @@
+{
+  "metadata": {
+    "created": "2025-08-05",
+    "description": "Chunked architecture decisions and technical planning for Crown 621 template experiment repo",
+    "total_chunks": 12,
+    "topics": [
+      "hardware_requirements",
+      "cloud_economics",
+      "use_cases",
+      "stack_decisions",
+      "python_workflow",
+      "storage_primitives",
+      "experiment_tracking",
+      "reinforcement_learning",
+      "template_structure",
+      "aws_setup",
+      "development_workflow"
+    ]
+  },
+  "chunks": [
+    {
+      "id": 1,
+      "topic": "hardware_requirements",
+      "title": "GPU Hardware Requirements for LLMs",
+      "date": "2025-07-01",
+      "summary": "Analysis of GPU memory requirements for running various LLM sizes locally, from 7B to 70B+ models",
+      "key_decisions": [
+        "≤ 13B models need ~26GB VRAM (1x RTX 4090)",
+        "70B models need 40-48GB in 4-bit or ~140GB in FP16",
+        "Hardware tiers from $3.5k prosumer to $35k+ accelerator-grade",
+        "Conclusion: Cloud is more economical for most use cases"
+      ],
+      "content": "Model size requirements: ≤ 13B FP16 needs ~26GB VRAM (1x RTX 4090), 30-34B in 4-8 bit needs 24-32GB, 70B 4-bit GPTQ needs 40-48GB, 70B FP16 needs ~140GB. Hardware tiers: A) Prosumer $3.5-4k for 7-34B models, B) Enthusiast multi-GPU $7-8k for 70B, C) Workstation-class $15-20k with NVLink for FP16 70B, D) Accelerator-grade $35k+ for 100B+ models."
+    },
+    {
+      "id": 2,
+      "topic": "cloud_economics",
+      "title": "Cloud vs Local GPU Economics",
+      "date": "2025-07-01",
+      "summary": "Cost analysis showing cloud GPUs are cheaper unless running >17 hours/day",
+      "key_decisions": [
+        "Cloud 4090 at $0.34/hr beats local if <17hr/day over 2 years",
+        "H100 only available via cloud for prosumers",
+        "Spot instances on Vast.ai/RunPod much cheaper than AWS",
+        "Decision: Use cloud for all GPU workloads"
+      ],
+      "content": "Local 4090 workstation costs ~$3,500 + $0.07/hr power. Cloud 4090 median $0.34/hr spot. Break-even at 17hr/day for 2 years. Cloud RTX 6000 Ada $0.77/hr, H100 $6.75/hr on AWS. Practical workflows: occasional inference via RunPod/Vast.ai, interactive tinkering on Mac mini with 7-13B models, long jobs on spot GPUs with checkpointing."
+    },
+    {
+      "id": 3,
+      "topic": "use_cases",
+      "title": "Research Areas and Use Cases",
+      "date": "2025-07-01",
+      "summary": "Three main research tracks: personal LLM, DAO agents, and large model integration",
+      "key_decisions": [
+        "Personal model: 7-13B with LoRA + RAG for memory",
+        "DAO agents: 3-7B with RL training",
+        "Large models: API-based for 400B+ (DeepSeek/Llama)",
+        "20B models for specialized info gathering"
+      ],
+      "content": "Track 1: Personal autobiographical model using 7-13B (Mistral/Gemma) with LoRA fine-tuning and external memory via RAG/KG. Track 2: Small RL agents (3-7B) for DAO Core using PPO/CleanRL. Track 3: Large models (DeepSeek-600B/Llama-405B) via API for Ton618 planner. Additional: 20B models for domain-specific optimization."
+    },
+    {
+      "id": 4,
+      "topic": "stack_decisions",
+      "title": "Technology Stack and Infrastructure Choices",
+      "date": "2025-07-01",
+      "summary": "Core stack decisions prioritizing Python expertise and pragmatic choices",
+      "key_decisions": [
+        "Python 3.12 for most services (intermediate/advanced skill)",
+        "Rust only for performance-critical components",
+        "Docker + docker-compose for all services",
+        "Postgres + pgvector as primary datastore",
+        "SkyPilot for GPU orchestration"
+      ],
+      "content": "Runtime: Python 3.12 + poetry monorepo. System-level: Rust 1.78 only for verifiable-compute wedge and HNSW ANN. Container: Docker everywhere. Orchestration: Nomad-lite on EC2. Data: Postgres 16 + pgvector, S3/MinIO for blobs. Inference: Spot H100/A100 via SkyPilot. Observability: Prometheus + Grafana, Loki logs."
+    },
+    {
+      "id": 5,
+      "topic": "python_workflow",
+      "title": "Python Development Workflow and Standards",
+      "date": "2025-07-01",
+      "summary": "Standardized Python development practices across all repos",
+      "key_decisions": [
+        "Template repo pattern (not monorepo)",
+        "Ruff + Mypy + pytest for code quality",
+        "FastAPI for APIs, Redis for queuing",
+        "Apache Burr for state management (not LangGraph)",
+        "DTOs with OpenAI JSON mode"
+      ],
+      "content": "Each service inherits from template-python-svc. Pre-commit: Ruff → Mypy → Pytest. Runtime: FastAPI + Uvicorn. Async: asyncio with TaskGroup. State: Apache Burr graph executor. LLM integration: Pydantic DTOs + OpenAI JSON mode. Dependencies: uv (fast Rust resolver) replacing Poetry for services."
+    },
+    {
+      "id": 6,
+      "topic": "storage_primitives",
+      "title": "Storage Layer Architecture",
+      "date": "2025-07-01",
+      "summary": "Unified storage primitives for all experiments",
+      "key_decisions": [
+        "Postgres 16 + pgvector for relational + vectors",
+        "MinIO locally → S3 in production",
+        "Redis 7 for queuing and caching",
+        "Qdrant optional for >10M vectors"
+      ],
+      "content": "Every repo gets docker-compose.dev.yml with Postgres+pgvector (ankane/pgvector:16), MinIO (S3-compatible), Redis 7, optional Qdrant. crown_common.storage provides unified interface. Local dev uses localhost endpoints, prod switches via ENV vars to RDS/S3. pgvector handles up to ~10M embeddings with HNSW index."
+    },
+    {
+      "id": 7,
+      "topic": "experiment_tracking",
+      "title": "Experiment Tracking and Observability",
+      "date": "2025-07-01",
+      "summary": "Standardized logging, metrics, and ML experiment tracking",
+      "key_decisions": [
+        "Weights & Biases for ML experiments",
+        "structlog → Loki for structured logging",
+        "Prometheus + Grafana for metrics",
+        "Offline mode for private experiments"
+      ],
+      "content": "W&B integration with offline→sync mode for air-gapped training. structlog for JSON logging to Loki. Prometheus FastAPI middleware for metrics. Sentry for error capture. dotenv-vault locally, AWS Secrets Manager in prod. All experiments log to same W&B project, artifacts to S3/MinIO."
+    },
+    {
+      "id": 8,
+      "topic": "reinforcement_learning",
+      "title": "RL Environment Setup",
+      "date": "2025-07-01",
+      "summary": "Standardized RL training infrastructure",
+      "key_decisions": [
+        "Gymnasium for environment API",
+        "CleanRL + HF TRL for training",
+        "Redis Streams for experience buffer",
+        "Hydra for config management"
+      ],
+      "content": "Template includes envs/ folder with Gymnasium environments, scripts/train_ppo.py using CleanRL, train_ppo_trl.py for LLM RLHF. AsyncVectorEnv for parallel episodes. Hydra YAML configs. W&B for tracking reward curves. Optional Ray RLlib for distributed training."
+    },
+    {
+      "id": 9,
+      "topic": "gpu_workflow",
+      "title": "GPU Development Workflow",
+      "date": "2025-07-01",
+      "summary": "Local CPU/MPS development with cloud GPU burst",
+      "key_decisions": [
+        "VS Code dev containers for consistency",
+        "SkyPilot for GPU provisioning",
+        "Auto device selection (MPS/CUDA/CPU)",
+        "Spot instances with idle shutdown"
+      ],
+      "content": "Dev workflow: Local Mac (MPS) → push → SkyPilot launches spot GPU → VS Code Remote-SSH → pull → run → auto-shutdown. get_device() helper auto-selects MPS locally, CUDA on EC2. Dev containers have CPU/MPS Dockerfile and GPU Dockerfile.gpu. SkyPilot YAMLs for A10/A100/H100 with autostop."
+    },
+    {
+      "id": 10,
+      "topic": "template_structure",
+      "title": "Template Repository Structure",
+      "date": "2025-07-01",
+      "summary": "Cookiecutter-style template for all Python services",
+      "key_decisions": [
+        "Single template repo, not monorepo",
+        "Each experiment is separate repo from template",
+        "Shared code via crown-common package",
+        "Public/private repo split for resume building"
+      ],
+      "content": "Structure: .devcontainer/, docker-compose.dev.yml, skypilot/, src/crown_common/, src/envs/, src/scripts/, pyproject.toml, uv.lock, Makefile, .env.example. Each new service: gh repo create crown-X --template template-python-svc. Renovate keeps templates fresh."
+    },
+    {
+      "id": 11,
+      "topic": "aws_setup",
+      "title": "AWS One-Time Setup",
+      "date": "2025-07-01",
+      "summary": "AWS configuration needed before using template",
+      "key_decisions": [
+        "Dedicated Crown Dev account/OU",
+        "IAM user for SkyPilot with EC2/S3/CloudWatch access",
+        "S3 bucket for artifacts",
+        "CloudWatch Lambda for idle shutdown"
+      ],
+      "content": "Setup: 1) Crown Dev AWS account with budget alerts, 2) IAM user 'skypilot-dev' with programmatic access, 3) EC2 key pair for VS Code SSH, 4) VPC/Security Group (or use SSM), 5) S3 bucket crown-artifacts, 6) Service quotas for GPU instances, 7) CloudWatch Lambda for 30min idle shutdown."
+    },
+    {
+      "id": 12,
+      "topic": "development_workflow",
+      "title": "End-to-End Development Workflow",
+      "date": "2025-07-01",
+      "summary": "Complete workflow from local dev to GPU training",
+      "key_decisions": [
+        "Push-pull-run cycle",
+        "Local dev on Mac, GPU burst on AWS",
+        "Git-based deployment",
+        "Cost optimization via spot + autoshutdown"
+      ],
+      "content": "Workflow: 1) Local changes on Mac, 2) git push, 3) sky launch gpu.yaml, 4) VS Code Remote-SSH to instance, 5) git pull in remote, 6) Run training (logs to W&B), 7) Checkpoints to S3, 8) sky down or auto-shutdown. Costs: A100 spot ~$0.70-1/hr, H100 ~$4-5/hr. 20hr/mo = $14-100."
+    }
+  ],
+  "index": {
+    "by_topic": {
+      "hardware": [1, 2],
+      "cloud": [2, 9, 11, 12],
+      "ml_experiments": [3, 7, 8],
+      "infrastructure": [4, 5, 6, 10],
+      "development": [5, 9, 10, 12],
+      "storage": [6],
+      "aws": [11]
+    },
+    "by_date": {
+      "2025-07-01": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    },
+    "dependencies": {
+      "1": ["2"],
+      "2": ["3"],
+      "3": ["4"],
+      "4": ["5", "6"],
+      "5": ["10"],
+      "6": ["7"],
+      "7": ["8"],
+      "8": ["9"],
+      "9": ["11", "12"],
+      "10": ["11"],
+      "11": ["12"]
+    }
+  }
+}
